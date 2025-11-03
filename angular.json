@@ -3,6 +3,20 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
+      "lib-mock-workbench": {
+        "projectType": "library",
+        "root": "projects/mock-workbench",
+        "sourceRoot": "projects/mock-workbench/src",
+        "architect": {
+          "build": {
+            "builder": "@angular-devkit/build-ng-packagr:build",
+            "options": {
+              "tsConfig": "projects/mock-workbench/tsconfig.lib.json",
+              "project": "projects/mock-workbench/ng-package.json"
+            }
+          }
+        }
+      },
     "test-orm": {
       "projectType": "application",
       "schematics": {
@@ -45,6 +59,13 @@
                 }
               ],
               "outputHashing": "all"
+            ,
+            "fileReplacements": [
+              {
+                "replace": "src/environments/environment.ts",
+                "with": "src/environments/environment.prod.ts"
+              }
+            ]
             },
             "development": {
               "optimization": false,
