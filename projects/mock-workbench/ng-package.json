@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/ng-packagr/ng-package.schema.json",
+  "lib": {
+    "entryFile": "src/public-api.ts"
+  },
+  "allowedNonPeerDependencies": [
+    "@pcurich/client-storage",
+    "@pcurich/http-mock-workbench"
+  ]
+}

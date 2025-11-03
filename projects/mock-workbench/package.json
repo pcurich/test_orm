@@ -1,0 +1,20 @@
+{
+  "name": "lib-mock-workbench",
+  "version": "2.0.0",
+  "peerDependencies": {
+    "@angular/common": "^20.0.0",
+    "@angular/core": "^20.0.0"
+  },
+  "scripts": {
+    "build": "npx ng-packagr -p ng-package.json",
+    "pack": "npm run build && powershell -Command \"Copy-Item -Path 'pcurich-client-storage-2.0.0.tgz' -Destination './dist' -Force; Copy-Item -Path 'pcurich-http-mock-workbench-2.0.0.tgz' -Destination './dist' -Force\" && node -e \"const p=require('./dist/package.json'); p.dependencies={'@pcurich/client-storage':'file:pcurich-client-storage-2.0.0.tgz','@pcurich/http-mock-workbench':'file:pcurich-http-mock-workbench-2.0.0.tgz','tslib':(p.dependencies&&p.dependencies.tslib)?p.dependencies.tslib:'^2.3.0'}; p.main='fesm2022/lib-mock-workbench.mjs'; p.module='fesm2022/lib-mock-workbench.mjs'; p.typings='index.d.ts'; p.exports={'./package.json':{default:'./package.json'},'.':{types:'./index.d.ts',import:'./fesm2022/lib-mock-workbench.mjs',require:'./fesm2022/lib-mock-workbench.mjs',default:'./fesm2022/lib-mock-workbench.mjs'}}; p.sideEffects=false; require('fs').writeFileSync('./dist/package.json',JSON.stringify(p,null,2));\" && cd dist && npm pack"
+  },
+  "files": [
+    "dist/**",
+    "README.md"
+  ],
+  "dependencies": {
+    "@pcurich/client-storage": "file:pcurich-client-storage-2.0.0.tgz",
+    "@pcurich/http-mock-workbench": "file:pcurich-http-mock-workbench-2.0.0.tgz"
+  }
+}
