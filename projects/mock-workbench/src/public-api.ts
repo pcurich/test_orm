@@ -2,3 +2,5 @@ export * from './lib/mock-workbench.component';
 export * from './lib/mount';
 export * from './lib/types';
 export * from './lib/http-mock-util';
+export * from './lib/service-helper';
+export * from './lib/ensure-services';

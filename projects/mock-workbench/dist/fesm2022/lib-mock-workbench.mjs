@@ -3,6 +3,56 @@ import { HostListener, Input, Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 /**
+ * Util que crea y cachea los servicios IndexedDB usados por el workbench.
+ * Exporta `ensureServices()` que devuelve un objeto con los servicios o null.
+ */
+let cachedServices$1 = null;
+async function ensureServices$1(options) {
+    if (cachedServices$1)
+        return cachedServices$1;
+    try {
+        // dynamic import to keep dev-only package out of prod bundles
+        // @ts-ignore
+        const lib = await import('@pcurich/client-storage').catch(() => null);
+        const createIndexedDbServices = lib?.createIndexedDbServices ?? lib?.default?.createIndexedDbServices;
+        if (typeof createIndexedDbServices !== 'function') {
+            // eslint-disable-next-line no-console
+            console.warn('[lib-mock-workbench] createIndexedDbServices not found in @pcurich/client-storage');
+            return null;
+        }
+        const cfg = { dbName: options?.dbName ?? 'myDb', version: options?.version ?? 2, httpOnly: options?.httpOnly ?? true };
+        const services = await createIndexedDbServices(cfg);
+        cachedServices$1 = services;
+        // eslint-disable-next-line no-console
+        console.log('[lib-mock-workbench] IndexedDB services created');
+        return services;
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[lib-mock-workbench] ensureServices failed', err);
+        return null;
+    }
+}
+async function destroyServices() {
+    try {
+        const s = cachedServices$1;
+        if (!s)
+            return;
+        if (typeof s.destroy === 'function')
+            await s.destroy();
+        else if (typeof s.close === 'function')
+            await s.close();
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[lib-mock-workbench] destroyServices failed', err);
+    }
+    finally {
+        cachedServices$1 = null;
+    }
+}
+
+/**
  * This Angular wrapper exposes the tag <custom-mock-workbench> and creates/manages
  * the actual inner webcomponent <mock-workbench>.
  * The library's webcomponent handles the UI; this wrapper forwards inputs and
@@ -12,7 +62,6 @@ class MockWorkbenchComponent {
     hostRef;
     ngZone;
     wcEl = null;
-    indexedDbServices = null;
     keyMock = 'useMock';
     httpMockService = null;
     constructor(hostRef, ngZone) {
@@ -22,7 +71,8 @@ class MockWorkbenchComponent {
     }
     async initDb() {
         try {
-            await this.ensureServices();
+            const services = await ensureServices$1();
+            this.httpMockService = services?.httpMockService ?? this.httpMockService;
         }
         catch (e) {
             // eslint-disable-next-line no-console
@@ -30,34 +80,9 @@ class MockWorkbenchComponent {
         }
     }
     /**
-     * Ensure the indexedDb services are created and cached. Returns the services
-     * object (may be null if creation failed).
+     * Note: ensureServices logic moved to shared util `ensure-services.ts`.
+     * Use the imported `ensureServices()` function to obtain cached services.
      */
-    async ensureServices() {
-        if (this.indexedDbServices)
-            return this.indexedDbServices;
-        try {
-            // dynamic import so the dev-only package isn't required at compile time
-            const lib = (await import('@pcurich/client-storage'));
-            const { createIndexedDbServices } = lib;
-            if (typeof createIndexedDbServices !== 'function') {
-                // eslint-disable-next-line no-console
-                console.warn('[custom-mock-workbench] createIndexedDbServices not found in @pcurich/client-storage');
-                return null;
-            }
-            const services = await createIndexedDbServices({ dbName: 'myDb', version: 2, httpOnly: true });
-            this.indexedDbServices = services;
-            this.httpMockService = services?.httpMockService ?? null;
-            // eslint-disable-next-line no-console
-            console.log('[custom-mock-workbench] IndexedDB services initialized');
-            return services;
-        }
-        catch (err) {
-            // eslint-disable-next-line no-console
-            console.error('[custom-mock-workbench] ensureServices failed', err);
-            return null;
-        }
-    }
     ngOnChanges(changes) {
         // Forward changed inputs to the underlying webcomponent if it's already created
         if (!this.wcEl)
@@ -141,16 +166,9 @@ class MockWorkbenchComponent {
             /* noop */
         }
         this.wcEl = null;
-        // Attempt to close/destroy indexedDB services if the API provides it
+        // best-effort destroy of cached services in the util
         try {
-            const s = this.indexedDbServices;
-            if (s && typeof s.destroy === 'function') {
-                // best-effort, don't await to avoid making ngOnDestroy async
-                void s.destroy();
-            }
-            else if (s && typeof s.close === 'function') {
-                void s.close();
-            }
+            void destroyServices();
         }
         catch (_e) {
             /* noop */
@@ -159,7 +177,7 @@ class MockWorkbenchComponent {
     async onSaveMockSchemaEvent(evt) {
         // eslint-disable-next-line no-console
         const { delayMs, headers, httpCodeResponseValue, httpMethod, nameMock, serviceCode, url } = evt?.detail ?? evt;
-        const services = await this.ensureServices();
+        const services = await ensureServices$1();
         const service = services?.httpMockService ?? this.httpMockService;
         if (!service) {
             // eslint-disable-next-line no-console
@@ -226,7 +244,7 @@ class MockWorkbenchComponent {
         const id = evt?.detail ?? evt;
         try {
             // Prefer existing cached services; ensureServices handles dynamic import and caching.
-            const services = await this.ensureServices();
+            const services = await ensureServices$1();
             const service = services?.httpMockService ?? this.httpMockService;
             if (!service) {
                 // eslint-disable-next-line no-console
@@ -291,7 +309,7 @@ class MockWorkbenchComponent {
     async onDeleteContextEventFromWC(evt) {
         const id = evt?.detail ?? evt;
         try {
-            const services = await this.ensureServices();
+            const services = await ensureServices$1();
             const service = services?.httpMockService ?? this.httpMockService;
             if (!service) {
                 // eslint-disable-next-line no-console
@@ -355,7 +373,7 @@ class MockWorkbenchComponent {
         // eslint-disable-next-line no-console
         let headers = evt?.detail ?? evt;
         try {
-            const services = await this.ensureServices();
+            const services = await ensureServices$1();
             const service = services?.httpMockService ?? this.httpMockService;
             if (!service) {
                 // eslint-disable-next-line no-console
@@ -379,7 +397,7 @@ class MockWorkbenchComponent {
         // eslint-disable-next-line no-console
         let response = evt?.detail ?? evt;
         try {
-            const services = await this.ensureServices();
+            const services = await ensureServices$1();
             const service = services?.httpMockService ?? this.httpMockService;
             if (!service) {
                 // eslint-disable-next-line no-console
@@ -409,7 +427,7 @@ class MockWorkbenchComponent {
     }
     async insertSample() {
         try {
-            const services = await this.ensureServices();
+            const services = await ensureServices$1();
             const service = services?.httpMockService ?? this.httpMockService;
             if (!service)
                 throw new Error('httpMockService not available');
@@ -429,7 +447,7 @@ class MockWorkbenchComponent {
     }
     async listMocks() {
         try {
-            const services = await this.ensureServices();
+            const services = await ensureServices$1();
             const service = services?.httpMockService ?? this.httpMockService;
             if (!service)
                 throw new Error('httpMockService not available');
@@ -657,8 +675,40 @@ const httpMockClient = {
 };
 
 /**
+ * Busca mocks por serviceCode y devuelve el primer body válido parseado.
+ * Intent: usar await import('lib-mock-workbench') en tiempo de ejecución y
+ * preferir la ruta de `ensureServices()` cuando esté disponible.
+ */
+/**
+ * Busca mocks por serviceCode y devuelve la lista de entidades encontradas.
+ * No intenta parsear ni iterar los bodies: esa responsabilidad queda para el
+ * consumidor. Retorna `HttpMockEntity[]` o `null` si no se pudieron obtener.
+ */
+async function fetchMockByServiceCode(serviceCode) {
+    try {
+        const services = await ensureServices$1();
+        const service = services?.httpMockService;
+        let client = undefined;
+        // si el servicio expone client directamente úsalo; de lo contrario busca propiedades
+        client = service?.httpMockClient ?? service?.httpMockService ?? service;
+        if (!client)
+            return null;
+        const found = typeof client.findByServiceCode === 'function'
+            ? await client.findByServiceCode(serviceCode)
+            : (typeof client.find === 'function' ? await client.find({ serviceCode }) : null);
+        const list = Array.isArray(found) ? found : (found ? [found] : []);
+        return list.length ? list : null;
+    }
+    catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[mock-workbench] fetchMockByServiceCode error', err);
+        return null;
+    }
+}
+
+/**
  * Generated bundle index. Do not edit.
  */
 
-export { MockWorkbenchComponent, httpMockClient, mountMockWorkbench };
+export { MockWorkbenchComponent, destroyServices, ensureServices$1 as ensureServices, fetchMockByServiceCode, httpMockClient, mountMockWorkbench };
 //# sourceMappingURL=lib-mock-workbench.mjs.map

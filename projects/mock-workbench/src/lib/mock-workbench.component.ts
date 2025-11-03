@@ -1,6 +1,7 @@
 import { Component, ElementRef, HostListener, Input, NgZone, OnChanges, OnDestroy, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import type { ContextOption } from './types';
+import { ensureServices, destroyServices } from './ensure-services';
 
 /**
  * This Angular wrapper exposes the tag <custom-mock-workbench> and creates/manages
@@ -18,7 +19,6 @@ import type { ContextOption } from './types';
 })
 export class MockWorkbenchComponent implements OnChanges, OnDestroy {
   private wcEl: any | null = null;
-  private indexedDbServices: any | null = null;
   @Input() keyMock: string = 'useMock';
   public httpMockService: any | null = null;
 
@@ -28,7 +28,8 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
 
   private async initDb(): Promise<void> {
     try {
-      await this.ensureServices();
+      const services = await ensureServices();
+      this.httpMockService = services?.httpMockService ?? this.httpMockService;
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[custom-mock-workbench] Failed to initialize IndexedDB services', e);
@@ -36,32 +37,9 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
   }
 
   /**
-   * Ensure the indexedDb services are created and cached. Returns the services
-   * object (may be null if creation failed).
+   * Note: ensureServices logic moved to shared util `ensure-services.ts`.
+   * Use the imported `ensureServices()` function to obtain cached services.
    */
-  private async ensureServices(): Promise<any | null> {
-    if (this.indexedDbServices) return this.indexedDbServices;
-    try {
-      // dynamic import so the dev-only package isn't required at compile time
-      const lib = (await import('@pcurich/client-storage')) as any;
-      const { createIndexedDbServices } = lib;
-      if (typeof createIndexedDbServices !== 'function') {
-        // eslint-disable-next-line no-console
-        console.warn('[custom-mock-workbench] createIndexedDbServices not found in @pcurich/client-storage');
-        return null;
-      }
-      const services = await createIndexedDbServices({ dbName: 'myDb', version: 2, httpOnly: true });
-      this.indexedDbServices = services;
-      this.httpMockService = services?.httpMockService ?? null;
-      // eslint-disable-next-line no-console
-      console.log('[custom-mock-workbench] IndexedDB services initialized');
-      return services;
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[custom-mock-workbench] ensureServices failed', err);
-      return null;
-    }
-  }
 
   ngOnChanges(changes: SimpleChanges): void {
     // Forward changed inputs to the underlying webcomponent if it's already created
@@ -145,15 +123,9 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
       /* noop */
     }
     this.wcEl = null;
-    // Attempt to close/destroy indexedDB services if the API provides it
+    // best-effort destroy of cached services in the util
     try {
-      const s = this.indexedDbServices as any;
-      if (s && typeof s.destroy === 'function') {
-        // best-effort, don't await to avoid making ngOnDestroy async
-        void s.destroy();
-      } else if (s && typeof s.close === 'function') {
-        void s.close();
-      }
+      void destroyServices();
     } catch (_e) {
       /* noop */
     }
@@ -164,7 +136,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
     // eslint-disable-next-line no-console
     const { delayMs, headers, httpCodeResponseValue, httpMethod, nameMock, serviceCode, url } = evt?.detail ?? evt;
 
-    const services = await this.ensureServices();
+  const services = await ensureServices();
     const service = services?.httpMockService ?? this.httpMockService;
     if (!service) {
       // eslint-disable-next-line no-console
@@ -235,7 +207,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
     const id = evt?.detail ?? evt;
     try {
       // Prefer existing cached services; ensureServices handles dynamic import and caching.
-      const services = await this.ensureServices();
+  const services = await ensureServices();
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) {
         // eslint-disable-next-line no-console
@@ -272,7 +244,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
   async onDeleteContextEventFromWC(evt: any): Promise<void> {
     const id = evt?.detail ?? evt;
     try {
-      const services = await this.ensureServices();
+  const services = await ensureServices();
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) {
         // eslint-disable-next-line no-console
@@ -310,7 +282,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
     // eslint-disable-next-line no-console
     let headers: Record<string, string> = evt?.detail ?? evt;
     try {
-      const services = await this.ensureServices();
+  const services = await ensureServices();
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) {
         // eslint-disable-next-line no-console
@@ -336,7 +308,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
     // eslint-disable-next-line no-console
     let response = evt?.detail ?? evt;
     try {
-      const services = await this.ensureServices();
+  const services = await ensureServices();
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) {
         // eslint-disable-next-line no-console
@@ -372,7 +344,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
 
   async insertSample(): Promise<void> {
     try {
-      const services = await this.ensureServices();
+  const services = await ensureServices();
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) throw new Error('httpMockService not available');
 
@@ -394,7 +366,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
 
   async listMocks(): Promise<void> {
     try {
-      const services = await this.ensureServices();
+  const services = await ensureServices();
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) throw new Error('httpMockService not available');
 

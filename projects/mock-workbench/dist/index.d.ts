@@ -11,16 +11,14 @@ declare class MockWorkbenchComponent implements OnChanges, OnDestroy {
     private hostRef;
     private ngZone;
     private wcEl;
-    private indexedDbServices;
     keyMock: string;
     httpMockService: any | null;
     constructor(hostRef: ElementRef, ngZone: NgZone);
     private initDb;
     /**
-     * Ensure the indexedDb services are created and cached. Returns the services
-     * object (may be null if creation failed).
+     * Note: ensureServices logic moved to shared util `ensure-services.ts`.
+     * Use the imported `ensureServices()` function to obtain cached services.
      */
-    private ensureServices;
     ngOnChanges(changes: SimpleChanges): void;
     ngAfterViewInit(): void;
     ngOnDestroy(): void;
@@ -99,5 +97,37 @@ declare const httpMockClient: {
     getResponseBodyAs<T>(id: IDBValidKey): Promise<T | null>;
 };
 
-export { MockWorkbenchComponent, httpMockClient, mountMockWorkbench };
-export type { ContextOption, HttpMockEntity, HttpMockFixture, Maybe, MountProps, MountResult };
+/**
+ * Helper para recuperar el mock asociado a un `serviceCode` desde la librería
+ * Esta función encapsula la import dinámica de `httpMockClient`, la búsqueda
+ * por `serviceCode` y el parseo del `responseBody` en un formato usable.
+ */
+
+interface ServiceMockResult<T = any> {
+    data: T[];
+    httpCodeResponseValue: number;
+    httpMethod: string;
+    delayMs: number;
+    source?: HttpMockEntity | null;
+}
+/**
+ * Busca mocks por serviceCode y devuelve el primer body válido parseado.
+ * Intent: usar await import('lib-mock-workbench') en tiempo de ejecución y
+ * preferir la ruta de `ensureServices()` cuando esté disponible.
+ */
+/**
+ * Busca mocks por serviceCode y devuelve la lista de entidades encontradas.
+ * No intenta parsear ni iterar los bodies: esa responsabilidad queda para el
+ * consumidor. Retorna `HttpMockEntity[]` o `null` si no se pudieron obtener.
+ */
+declare function fetchMockByServiceCode(serviceCode: string): Promise<HttpMockEntity[] | null>;
+
+declare function ensureServices(options?: {
+    dbName?: string;
+    version?: number;
+    httpOnly?: boolean;
+}): Promise<any>;
+declare function destroyServices(): Promise<void>;
+
+export { MockWorkbenchComponent, destroyServices, ensureServices, fetchMockByServiceCode, httpMockClient, mountMockWorkbench };
+export type { ContextOption, HttpMockEntity, HttpMockFixture, Maybe, MountProps, MountResult, ServiceMockResult };

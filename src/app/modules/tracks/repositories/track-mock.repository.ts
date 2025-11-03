@@ -4,6 +4,7 @@ import { TrackModel } from "@core/models/tracks.model";
 import { Observable, of, throwError, from, defer } from "rxjs";
 import { switchMap, delay } from 'rxjs/operators';
 import { environment } from "@env/environment";
+import { fetchMockByServiceCode } from 'lib-mock-workbench';
 
 
 @Injectable({
@@ -25,61 +26,44 @@ export class TrackMockRepository implements ITrackRepository {
       return;
     }
 
-    this.initDone = (async () => {
+  this.initDone = (async () => {
+    debugger;
       try {
-        // import dinámico para evitar enlazar la librería si no está instalada (dev-only)
-        const pkg: any = await import('lib-mock-workbench').catch(() => null);
-        const client = pkg?.httpMockClient as any | undefined;
-        if (!client) {
-          // fallback: usar datos locales (si tienes alguno)
+        // Only use the library helper which returns the raw list of mocks for the serviceCode
+        const list = await fetchMockByServiceCode('music-service-1');
+        if (!list || !list.length) {
           const { data }: any = ({} as any).default;
           this.mockData = Array.isArray(data) ? data : [];
           return;
         }
 
-        // buscar mocks que pertenezcan al serviceCode
-        const found = await client.findByServiceCode('music-service-1');
-        console.log('[TrackMockRepository] Mocks found for serviceCode "music-service-1":', found);
-
-        // found puede ser: HttpMockEntity | HttpMockEntity[] (dependiendo de la API)
-        const list = Array.isArray(found) ? found : (found ? [found] : []);
-
-        // si no hay resultados, fallback a datos locales
-        if (!list.length) {
-          const { data }: any = ({} as any).default;
-          this.mockData = Array.isArray(data) ? data : [];
-          return;
-        }
-
-        // Intentamos obtener y parsear el responseBody del primer mock que tenga body
-        for (const mock of list) {
+        // Use the first mock returned and try to read its response body directly
+        const mock = list[0] as any;
+        const raw = mock?.responseBody ?? mock?.body ?? mock?.response ?? null;
+        let bodyObj: any = null;
+        if (raw != null) {
           try {
-            // getResponseBodyAs parsea responseBody acorde al formato almacenado.
-            // Pedimos explícitamente TrackModel[] como tipado esperado.
-            const body = await (client as any).getResponseBodyAs(mock._id);
-            // body puede ya ser objeto; intenta manejar string/JSON
-            const bodyObj = typeof body === 'string' ? JSON.parse(body) : body;
-            if (Array.isArray(bodyObj?.data) && bodyObj.data.length) {
-              // usamos el primer body válido que encontremos
-              this.mockData = bodyObj.data;
-              this.httpCodeResponseValue = mock.httpCodeResponseValue || 200;
-              this.httpMethod = mock.method || 'GET';
-              this.delayMs = mock.delayMs || 1500;
-              break;
-            }
-            if (Array.isArray(bodyObj) && bodyObj.length) {
-              this.mockData = bodyObj;
-              break;
-            }
-          } catch (innerErr) {
-            // sigue intentando con el siguiente mock en la lista
+            bodyObj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+          } catch (parseErr) {
+            // if parsing fails, log and treat as no body
             // eslint-disable-next-line no-console
-            console.warn('[TrackMockRepository] getResponseBodyAs failed for mock id', mock?._id, innerErr);
+            console.warn('[TrackMockRepository] failed parsing responseBody from mock', mock?._id, parseErr);
           }
         }
 
-        // si tras todo no hemos rellenado mockData, fallback a locales
-        if (!this.mockData || !this.mockData.length) {
+        if (bodyObj) {
+          if (Array.isArray(bodyObj?.data) && bodyObj.data.length) {
+            this.mockData = bodyObj.data;
+          } else if (Array.isArray(bodyObj) && bodyObj.length) {
+            this.mockData = bodyObj;
+          }
+        }
+
+        if (this.mockData && this.mockData.length) {
+          this.httpCodeResponseValue = mock.httpCodeResponseValue || 200;
+          this.httpMethod = mock.method || 'GET';
+          this.delayMs = mock.delayMs || 1500;
+        } else {
           const { data }: any = ({} as any).default;
           this.mockData = Array.isArray(data) ? data : [];
         }
