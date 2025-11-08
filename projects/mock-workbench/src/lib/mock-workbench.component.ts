@@ -1,6 +1,6 @@
 import { Component, ElementRef, HostListener, Input, NgZone, OnChanges, OnDestroy, SimpleChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { ContextOption } from './types';
+import type { ContextOption, DBInitOptions, StoreConfig } from './types';
 import { ensureServices, destroyServices } from './ensure-services';
 
 /**
@@ -20,26 +20,35 @@ import { ensureServices, destroyServices } from './ensure-services';
 export class MockWorkbenchComponent implements OnChanges, OnDestroy {
   private wcEl: any | null = null;
   @Input() keyMock: string = 'useMock';
+  @Input() dbName?: string = 'myDb';
+  @Input() version?: number = 1;
+  @Input() stores?: StoreConfig[] = [];
+  @Input() httpOnly?: boolean = true;
+
+  @Input() contextOptions?: ContextOption[] = [];
+
   public httpMockService: any | null = null;
 
+  private options!: DBInitOptions;
+
   constructor(private hostRef: ElementRef, private ngZone: NgZone) {
-    void this.initDb();
+
   }
 
-  private async initDb(): Promise<void> {
+  public async initDb(): Promise<void> {
     try {
-      const services = await ensureServices();
+      this.options = { dbName: this.dbName, version: this.version, stores: this.stores, httpOnly: this.httpOnly };
+      window.console.log('Initializing IndexedDB services with options:', this.options);
+      window.console.log('ensureServices called with options:', this.dbName, this.version, this.stores, this.httpOnly);
+      const services = await ensureServices(this.options);
       this.httpMockService = services?.httpMockService ?? this.httpMockService;
+
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('[custom-mock-workbench] Failed to initialize IndexedDB services', e);
     }
   }
 
-  /**
-   * Note: ensureServices logic moved to shared util `ensure-services.ts`.
-   * Use the imported `ensureServices()` function to obtain cached services.
-   */
 
   ngOnChanges(changes: SimpleChanges): void {
     // Forward changed inputs to the underlying webcomponent if it's already created
@@ -103,6 +112,8 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
         // Ensure initial inputs are forwarded to the webcomponent (e.g. keyMock)
         try {
           if (this.keyMock != null) (this.wcEl as any).keyMock = this.keyMock;
+          if (this.contextOptions != null) (this.wcEl as any).contextOptions = this.contextOptions;
+
         } catch (_e) {
           /* ignore */
         }
@@ -136,7 +147,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
     // eslint-disable-next-line no-console
     const { delayMs, headers, httpCodeResponseValue, httpMethod, nameMock, serviceCode, url } = evt?.detail ?? evt;
 
-  const services = await ensureServices();
+    const services = await ensureServices(this.options);
     const service = services?.httpMockService ?? this.httpMockService;
     if (!service) {
       // eslint-disable-next-line no-console
@@ -191,14 +202,12 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
     console.log('[custom-mock-workbench] saveMockSchemaEvent', contextId);
   }
 
-
   @HostListener('contextTypeChangeEvent', ['$event'])
   onContextTypeChangeEvent(evt: any): void {
     // eslint-disable-next-line no-console
     const context: ContextOption = (evt?.detail ?? evt) as ContextOption;
-    const { id, value, useMock } = context || {};
-    window.localStorage.setItem(this.keyMock, JSON.stringify({ id, value, useMock }));
-    console.log('[custom-mock-workbench] contextTypeChangeEvent', { id, value, useMock });
+    window.localStorage.setItem(this.keyMock, JSON.stringify(context));
+    console.log('[custom-mock-workbench] contextTypeChangeEvent', context);
     window.location.reload();
   }
 
@@ -207,7 +216,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
     const id = evt?.detail ?? evt;
     try {
       // Prefer existing cached services; ensureServices handles dynamic import and caching.
-  const services = await ensureServices();
+      const services = await ensureServices(this.options);
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) {
         // eslint-disable-next-line no-console
@@ -223,16 +232,16 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
       if (!el || !mock) return;
 
       // Map fields with safe fallbacks for different fixture shapes
-      try { el.contextId = mock._id ?? mock.id; } catch {}
-      try { el.nameMock = mock.nameMock ?? mock.name; } catch {}
-      try { el.serviceCode = mock.serviceCode ?? mock.service; } catch {}
-      try { el.url = mock.url ?? mock.path ?? mock.endpoint; } catch {}
-      try { el.httpMethod = mock.httpMethod ?? mock.method; } catch {}
-      try { el.httpCodeResponseValue = Number(mock.httpCodeResponseValue ?? mock.responseCode ?? mock.responseCodeValue ?? 0); } catch {}
-      try { el.delayMs = Number(mock.delayMs ?? mock.delay ?? 0); } catch {}
-      if (mock.headers) try { el.headers = mock.headers; } catch {}
-      if (mock.responseBody) try { el.responseBody = mock.responseBody; } catch {}
-      try { el.activeTab = 2; } catch {}
+      try { el.contextId = mock._id ?? mock.id; } catch { }
+      try { el.nameMock = mock.nameMock ?? mock.name; } catch { }
+      try { el.serviceCode = mock.serviceCode ?? mock.service; } catch { }
+      try { el.url = mock.url ?? mock.path ?? mock.endpoint; } catch { }
+      try { el.httpMethod = mock.httpMethod ?? mock.method; } catch { }
+      try { el.httpCodeResponseValue = Number(mock.httpCodeResponseValue ?? mock.responseCode ?? mock.responseCodeValue ?? 0); } catch { }
+      try { el.delayMs = Number(mock.delayMs ?? mock.delay ?? 0); } catch { }
+      if (mock.headers) try { el.headers = mock.headers; } catch { }
+      if (mock.responseBody) try { el.responseBody = mock.responseBody; } catch { }
+      try { el.activeTab = 2; } catch { }
 
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -244,7 +253,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
   async onDeleteContextEventFromWC(evt: any): Promise<void> {
     const id = evt?.detail ?? evt;
     try {
-  const services = await ensureServices();
+      const services = await ensureServices(this.options);
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) {
         // eslint-disable-next-line no-console
@@ -257,16 +266,16 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
       const el = this.wcEl ?? (document.querySelector('mock-workbench') as any);
       // If the deleted mock is currently loaded in the webcomponent, clear its state
       if (el && (el.contextId === id || el.contextId === (id as any)?._id)) {
-        try { el.contextId = 0; } catch {}
-        try { el.nameMock = ''; } catch {}
-        try { el.serviceCode = ''; } catch {}
-        try { el.url = ''; } catch {}
-        try { el.httpMethod = 'GET'; } catch {}
-        try { el.httpCodeResponseValue = 200; } catch {}
-        try { el.delayMs = 0; } catch {}
-        try { el.headers = {}; } catch {}
-        try { el.responseBody = '{}'; } catch {}
-        try { el.activeTab = 2; } catch {}
+        try { el.contextId = 0; } catch { }
+        try { el.nameMock = ''; } catch { }
+        try { el.serviceCode = ''; } catch { }
+        try { el.url = ''; } catch { }
+        try { el.httpMethod = 'GET'; } catch { }
+        try { el.httpCodeResponseValue = 200; } catch { }
+        try { el.delayMs = 0; } catch { }
+        try { el.headers = {}; } catch { }
+        try { el.responseBody = '{}'; } catch { }
+        try { el.activeTab = 2; } catch { }
       }
 
       // eslint-disable-next-line no-console
@@ -282,7 +291,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
     // eslint-disable-next-line no-console
     let headers: Record<string, string> = evt?.detail ?? evt;
     try {
-  const services = await ensureServices();
+      const services = await ensureServices(this.options);
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) {
         // eslint-disable-next-line no-console
@@ -308,7 +317,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
     // eslint-disable-next-line no-console
     let response = evt?.detail ?? evt;
     try {
-  const services = await ensureServices();
+      const services = await ensureServices(this.options);
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) {
         // eslint-disable-next-line no-console
@@ -334,7 +343,6 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
     console.log('[custom-mock-workbench] saveMockBodyEvent', evt?.detail ?? evt);
   }
 
-
   @HostListener('reloadEvent', ['$event'])
   onReloadEvent(evt: any): void {
     // eslint-disable-next-line no-console
@@ -344,7 +352,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
 
   async insertSample(): Promise<void> {
     try {
-  const services = await ensureServices();
+      const services = await ensureServices(this.options);
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) throw new Error('httpMockService not available');
 
@@ -366,7 +374,7 @@ export class MockWorkbenchComponent implements OnChanges, OnDestroy {
 
   async listMocks(): Promise<void> {
     try {
-  const services = await ensureServices();
+      const services = await ensureServices(this.options);
       const service = services?.httpMockService ?? this.httpMockService;
       if (!service) throw new Error('httpMockService not available');
 

@@ -2,22 +2,26 @@
  * Util que crea y cachea los servicios IndexedDB usados por el workbench.
  * Exporta `ensureServices()` que devuelve un objeto con los servicios o null.
  */
+
+import { DBInitOptions } from './types';
 let cachedServices: any | null = null;
 
-export async function ensureServices(options?: { dbName?: string; version?: number; httpOnly?: boolean }) {
+export async function ensureServices(options: DBInitOptions) {
+  window.console.log('ensureServices called with options:', options);
   if (cachedServices) return cachedServices;
   try {
     // dynamic import to keep dev-only package out of prod bundles
     // @ts-ignore
     const lib = await import('@pcurich/client-storage').catch(() => null);
-    const createIndexedDbServices = lib?.createIndexedDbServices ?? lib?.default?.createIndexedDbServices;
+    const createIndexedDbServices = lib?.createIndexedDbServices;
     if (typeof createIndexedDbServices !== 'function') {
       // eslint-disable-next-line no-console
       console.warn('[lib-mock-workbench] createIndexedDbServices not found in @pcurich/client-storage');
       return null;
     }
 
-    const cfg = { dbName: options?.dbName ?? 'myDb', version: options?.version ?? 2, httpOnly: options?.httpOnly ?? true };
+    const cfg: DBInitOptions = { dbName: options?.dbName ?? 'myDb', version: options?.version ?? 1, stores: options?.stores ?? [], httpOnly: options?.httpOnly ?? true };
+    window.console.log('Creating IndexedDB services with config:', cfg);
     const services = await createIndexedDbServices(cfg);
     cachedServices = services;
     // eslint-disable-next-line no-console

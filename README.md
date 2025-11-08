@@ -186,7 +186,7 @@ destroy();
   - `saveMockSchemaEvent` — crea/actualiza metadata del mock; el wrapper posiciona la UI en la pestaña correspondiente.
   - `saveHeadersEvent` / `saveMockBodyEvent` — persisten cabeceras y cuerpo mediante `service.updateMock(...)`.
 
-- Utilitario exportado: `httpMockClient` (en `./lib/http-mock-util`).
+- Utilitario exportado: `httpMockClient` (en `./lib/http-mock-client`).
   - Encapsula las operaciones comunes contra `httpMockService`: `createMock`, `getMockById`, `updateMock`, `deleteMock`, `getAllMocks`, `findByUrl`, `findByServiceCode`, `findByIndex`, `getResponseBodyAs<T>`.
   - Realiza un `import()` dinámico de los servicios la primera vez que se usa y cachea la instancia para llamadas posteriores.
 
@@ -210,7 +210,7 @@ La librería expone sus APIs principales desde `projects/mock-workbench/src/publ
 export * from './lib/mock-workbench.component';
 export * from './lib/mount';
 export * from './lib/types';
-export * from './lib/http-mock-util';
+export * from './lib/http-mock-client';
 ```
 
 Importa desde tu aplicación ya sea el componente (selector), `mountMockWorkbench` o `httpMockClient` según necesites:
