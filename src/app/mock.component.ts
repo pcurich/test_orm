@@ -47,7 +47,7 @@ export class MockComponent {
 
   private mountController: { destroy?: () => void; ref?: any } | null = null;
 
-  constructor(private cd: ChangeDetectorRef) {}
+  constructor(private cd: ChangeDetectorRef) { }
 
   async toggleMockWorkbench(): Promise<void> {
     if (!this.isDev) return;
@@ -73,9 +73,7 @@ export class MockComponent {
       }
       const pkgAny: any = await import('lib-mock-workbench').catch(() => null);
       if (pkgAny && typeof pkgAny.mountMockWorkbench === 'function') {
-        // pass the keyMock input from environment (fallback to 'test')
-        const key = (environment && (environment as any).mockKey) ? (environment as any).mockKey : 'test';
-        const controller = pkgAny.mountMockWorkbench(this.mockHost, { keyMock: key });
+        const controller = pkgAny.mountMockWorkbench(this.mockHost, DEFAULT_DB_INIT_OPTIONS);
         if (controller && controller.ref) this.mountController = controller;
         else this.mountController = { ref: controller } as any;
       }
@@ -86,4 +84,25 @@ export class MockComponent {
 
     this.cd.detectChanges();
   }
+}
+
+export const DEFAULT_DB_INIT_OPTIONS = {
+  dbName: 'app-mock-db',
+  version: 2,
+  httpOnly: false,
+  stores: [
+    {
+      name: 'http-mocks', keyPath: '_id', autoIncrement: true, indexes: [
+        { name: 'by_serviceCode', keyPath: 'serviceCode' },
+        { name: 'by_url', keyPath: 'url' }
+      ]
+    }
+  ],
+  keyMock: (environment && (environment as any).mockKey) ? (environment as any).mockKey : 'test',
+  contextOptions: [
+    { id: 1, value: '---------', useMock: false },
+    { id: 2, value: 'Usar HTTP Service', useMock: false },
+    { id: 3, value: 'Usar HTTP Interceptor', useMock: false },
+    { id: 4, value: 'Usar Data', useMock: true },
+  ]
 }

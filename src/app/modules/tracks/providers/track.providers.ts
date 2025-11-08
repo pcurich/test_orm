@@ -9,7 +9,8 @@ export const TRACK_PROVIDERS = [
     provide: TRACK_REPOSITORY_TOKEN,
     // evaluate once and log for easier debugging
     useClass: (() => {
-      const useMock = (JSON.parse(localStorage.getItem(environment.mockKey)!))['useMock'];
+      let localMock = localStorage.getItem(environment.mockKey);
+      const useMock = localMock ? (JSON.parse(localMock))['useMock'] : false;
       // eslint-disable-next-line no-console
       console.log('[TRACK_PROVIDERS] useMock =', useMock, 'localStorage(useMock)=', localStorage.getItem('useMock'));
       return useMock ? TrackMockRepository : TrackHttpRepository;

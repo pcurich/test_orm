@@ -1,97 +1,76 @@
-import { Injectable } from "@angular/core";
+// import { Injectable, Inject } from "@angular/core";
+import { Injectable, Inject } from "@angular/core";
 import { ITrackRepository } from "@modules/tracks/interfaces/track-repository.interface";
 import { TrackModel } from "@core/models/tracks.model";
-import { Observable, of, throwError, from, defer } from "rxjs";
+import { Observable, of, throwError, from } from "rxjs";
 import { switchMap, delay } from 'rxjs/operators';
-import { environment } from "@env/environment";
-import { fetchMockByServiceCode } from 'lib-mock-workbench';
-
-
-@Injectable({
-  providedIn: 'root'
-})
+import { DEFAULT_DB_INIT_OPTIONS } from "src/app/mock.component";
+@Injectable({ providedIn: 'root' })
 export class TrackMockRepository implements ITrackRepository {
-  private mockData: TrackModel[] = [];
-  private httpCodeResponseValue: number = 200;
-  private httpMethod: string = 'GET';
-  private delayMs: number = 1500;
+  private readonly DEFAULT_DELAY = 1000;
 
-  // Promise that resolves when initialization finished (success or fallback)
-  private initDone: Promise<void>;
+  // Fetch and return a contextualized result for the given serviceCode.
+  // The returned shape is always { data: TrackModel[], httpCode: number, delayMs: number }.
+  private async fetchContext(serviceCode: string): Promise<{ data: TrackModel[]; httpCode: number; delayMs: number }> {
+    try {
+      const list = await import('lib-mock-workbench').then(m => m.fetchMockByServiceCode(serviceCode, DEFAULT_DB_INIT_OPTIONS));
+      const safeList = Array.isArray(list) ? list : [];
+      return this.contextFromList(safeList);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn('[TrackMockRepository] fetchContext error', err);
+      return { data: [], httpCode: 200, delayMs: 0 };
+    }
+  }
 
-  constructor() {
-    if (environment.production) {
-      this.mockData = [];
-      this.initDone = Promise.resolve();
-      return;
+  // Turn the raw list returned by the mock fetcher into a normalized context.
+  private contextFromList(list: any[]): { data: TrackModel[]; httpCode: number; delayMs: number } {
+    const mock = (Array.isArray(list) && list.length) ? list[0] : null;
+    if (!mock) return { data: [], httpCode: 200, delayMs: 0 };
+
+    const httpCode = Number(mock?.httpCodeResponseValue ?? mock?.responseCode ?? 200);
+    const delayMs = Number(mock?.delayMs ?? this.DEFAULT_DELAY);
+    const raw = mock?.responseBody ?? mock?.body ?? mock?.response ?? null;
+
+    let bodyObj: any = null;
+    if (raw !== null && raw !== undefined) {
+      try { bodyObj = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (_e) { bodyObj = raw; }
     }
 
-  this.initDone = (async () => {
-    debugger;
-      try {
-        // Only use the library helper which returns the raw list of mocks for the serviceCode
-        const list = await fetchMockByServiceCode('music-service-1');
-        if (!list || !list.length) {
-          const { data }: any = ({} as any).default;
-          this.mockData = Array.isArray(data) ? data : [];
-          return;
-        }
+    let data: TrackModel[] = [];
+    if (bodyObj) {
+      if (Array.isArray(bodyObj?.data) && bodyObj.data.length) data = bodyObj.data as TrackModel[];
+      else if (Array.isArray(bodyObj) && bodyObj.length) data = bodyObj as TrackModel[];
+    }
 
-        // Use the first mock returned and try to read its response body directly
-        const mock = list[0] as any;
-        const raw = mock?.responseBody ?? mock?.body ?? mock?.response ?? null;
-        let bodyObj: any = null;
-        if (raw != null) {
-          try {
-            bodyObj = typeof raw === 'string' ? JSON.parse(raw) : raw;
-          } catch (parseErr) {
-            // if parsing fails, log and treat as no body
-            // eslint-disable-next-line no-console
-            console.warn('[TrackMockRepository] failed parsing responseBody from mock', mock?._id, parseErr);
-          }
-        }
+    return { data, httpCode, delayMs };
+  }
 
-        if (bodyObj) {
-          if (Array.isArray(bodyObj?.data) && bodyObj.data.length) {
-            this.mockData = bodyObj.data;
-          } else if (Array.isArray(bodyObj) && bodyObj.length) {
-            this.mockData = bodyObj;
-          }
-        }
-
-        if (this.mockData && this.mockData.length) {
-          this.httpCodeResponseValue = mock.httpCodeResponseValue || 200;
-          this.httpMethod = mock.method || 'GET';
-          this.delayMs = mock.delayMs || 1500;
-        } else {
-          const { data }: any = ({} as any).default;
-          this.mockData = Array.isArray(data) ? data : [];
-        }
-      } catch (err) {
-        // fallback y log
-        // eslint-disable-next-line no-console
-        console.error('[TrackMockRepository] Error loading mockData from httpMockClient', err);
-        const { data }: any = ({} as any).default;
-        this.mockData = Array.isArray(data) ? data : [];
-      }
-    })();
+  private toObservable(result: { data: TrackModel[]; httpCode: number; delayMs: number }): Observable<TrackModel[]> {
+    const { data, httpCode, delayMs } = result;
+    if (httpCode === 200) return of(data).pipe(delay(delayMs));
+    if (httpCode === 204) return of([]).pipe(delay(delayMs));
+    return throwError(() => new Error(`HTTP Error ${httpCode}`)).pipe(delay(delayMs));
   }
 
   getAllTracks(): Observable<TrackModel[]> {
-    // ensure initialization finished before returning data, then delay by delayMs
-    return from(this.initDone).pipe(switchMap(() => of(this.mockData).pipe(delay(this.delayMs))));
+    const SERVICE_CODE = 'music-service-1';
+    return from(this.fetchContext(SERVICE_CODE)).pipe(switchMap(ctx => this.toObservable(ctx)));
   }
 
   getRandomTracks(): Observable<TrackModel[]> {
-    // wait for init, then emulate delayed response using configured delayMs
-    return from(this.initDone).pipe(switchMap(() => of(this.mockData).pipe(delay(this.delayMs))));
+    const SERVICE_CODE = 'music-service-2';
+    return from(this.fetchContext(SERVICE_CODE)).pipe(switchMap(ctx => this.toObservable(ctx)));
   }
 
   getTrackById(id: number): Observable<TrackModel> {
-    // ensure init done, then return the track (or error) after delayMs
-    return from(this.initDone).pipe(switchMap(() => defer(() => {
-      const track = this.mockData.find(t => t._id === id);
-      return track ? of(track) : throwError(() => new Error('Track not found'));
-    }).pipe(delay(this.delayMs))));
+    const SERVICE_CODE = 'music-service-3';
+    return from(this.fetchContext(SERVICE_CODE)).pipe(switchMap(ctx => {
+      const { data, httpCode, delayMs } = ctx;
+      if (httpCode >= 400) return throwError(() => new Error(`HTTP Error ${httpCode}`)).pipe(delay(delayMs));
+      const found = (data || []).find((t: TrackModel) => t._id === id);
+      if (!found) return throwError(() => new Error('Track not found')).pipe(delay(delayMs));
+      return of(found).pipe(delay(delayMs));
+    }));
   }
 }
