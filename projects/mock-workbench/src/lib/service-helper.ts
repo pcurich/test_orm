@@ -16,16 +16,6 @@ export interface ServiceMockResult<T = any> {
 
 
 /**
- * Busca mocks por serviceCode y devuelve el primer body válido parseado.
- * Intent: usar await import('lib-mock-workbench') en tiempo de ejecución y
- * preferir la ruta de `ensureServices()` cuando esté disponible.
- */
-/**
- * Busca mocks por serviceCode y devuelve la lista de entidades encontradas.
- * No intenta parsear ni iterar los bodies: esa responsabilidad queda para el
- * consumidor. Retorna `HttpMockEntity[]` o `null` si no se pudieron obtener.
- */
-/**
  * Busca mocks por `serviceCode` y devuelve la lista de entidades encontradas.
  * Acepta un parámetro opcional `options` de tipo `DBInitOptions` que será
  * pasado a `ensureServices(options)` para inicializar/abrir la DB con la
@@ -52,6 +42,35 @@ export async function fetchMockByServiceCode(serviceCode: string, options?: DBIn
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[mock-workbench] fetchMockByServiceCode error', err);
+    return [];
+  }
+}
+
+/**
+ * Busca mocks por `url` y devuelve la lista de entidades encontradas.
+ * Acepta un parámetro opcional `options` de tipo `DBInitOptions` que será
+ * pasado a `ensureServices(options)` para inicializar/abrir la DB con la
+ * configuración suministrada (dbName, version, stores, etc.).
+ */
+export async function fetchMockByUrl(url: string, options?: DBInitOptions): Promise<HttpMockEntity[]> {
+  try {
+    // Ensure services are available. provide empty object if options undefined.
+    const services = await ensureServices((options ?? {}) as DBInitOptions);
+    const service = services?.httpMockService;
+
+    let client: any | undefined = undefined;
+    client = service?.httpMockClient ?? service?.httpMockService ?? service;
+    if (!client) return [];
+
+    const found = typeof client.findByUrl === 'function'
+      ? await client.findByUrl(url)
+      : (typeof client.find === 'function' ? await client.find({ url }) : null);
+
+    const list: HttpMockEntity[] = Array.isArray(found) ? found : (found ? [found] : []);
+    return list.length ? list : [];
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[mock-workbench] fetchMockByUrl error', err);
     return [];
   }
 }
